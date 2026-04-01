@@ -4,7 +4,9 @@ import { getInitialSceneState } from "../scene/state";
 import {
   buildDocumentLines,
   getBrickLayouts,
+  getBodyRegions,
   getPageObstacles,
+  getTitleRegion,
   PAGE_COUNT
 } from "./document";
 
@@ -28,5 +30,19 @@ describe("document layout", () => {
     const bricks = getBrickLayouts(paper);
     expect(bricks.length).toBe(paper.keywords.length);
     expect(bricks[0]?.pageIndex).toBe(0);
+  });
+
+  it("defines a dedicated title region on the first page", () => {
+    const region = getTitleRegion();
+    expect(region.pageIndex).toBe(0);
+    expect(region.y).toBeGreaterThan(0);
+    expect(region.height).toBeGreaterThan(100);
+  });
+
+  it("creates body regions for every page in the stack", () => {
+    const regions = getBodyRegions();
+    expect(regions).toHaveLength(PAGE_COUNT);
+    expect(regions[0]?.pageIndex).toBe(0);
+    expect(regions[1]?.pageIndex).toBe(1);
   });
 });
