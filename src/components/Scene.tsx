@@ -1,192 +1,384 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PaperContent } from "../content";
-import { hasMarginNotes } from "../layout/columns";
-import { getParagraphLayoutWidth, getParagraphOffset } from "../layout/pretext";
 import {
-  getInitialVisibleFragments,
-  getVisibleKeywords,
-  getViewportKind,
-} from "../scene/fragments";
+  getFragmentLines,
+  getParagraphLayoutWidth,
+  getParagraphOffset
+} from "../layout/pretext";
 import {
   applyClickRally,
   getInitialSceneState,
-  movePlayerPaddleByClick,
   stepPong,
-  toggleMode
+  toggleMode,
+  type SceneState
 } from "../scene/state";
-import { Marginalia } from "./Marginalia";
-import { PaperFrame } from "./PaperFrame";
-import { TextFragment } from "./TextFragment";
 
 type SceneProps = {
   paper: PaperContent;
 };
 
+type PaperLine = {
+  pageIndex: number;
+  x: number;
+  y: number;
+  text: string;
+  className: string;
+  width?: number;
+};
+
+const PAGE_COUNT = 4;
+const PAGE_HEIGHT = 1160;
+const PAGE_WIDTH = 900;
+const PAGE_PADDING_X = 74;
+const PAGE_PADDING_TOP = 58;
+const PAGE_FOOTER_SPACE = 66;
+const BODY_WIDTH = 752;
+const BODY_LINE_HEIGHT = 18;
+const BODY_FONT = '400 13px "Times New Roman", Times, serif';
+const TITLE_FONT = '600 34px "Times New Roman", Times, serif';
+const AUTHORS_FONT = '400 13px "Times New Roman", Times, serif';
+const SECTION_FONT = '700 18px "Times New Roman", Times, serif';
+const REFERENCE_FONT = '400 11.5px "Times New Roman", Times, serif';
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 function getViewportWidth() {
   return typeof window === "undefined" ? 1280 : window.innerWidth;
 }
 
+function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewportWidth: number) {
+  const lines: PaperLine[] = [];
+  let pageIndex = 0;
+  let y = PAGE_PADDING_TOP;
+
+  const addLines = (
+    text: string,
+    options: {
+      className: string;
+      width: number;
+      lineHeight: number;
+      font: string;
+      x?: number;
+      marginTop?: number;
+      marginBottom?: number;
+      paragraphCenterY?: number;
+    }
+  ) => {
+    y += options.marginTop ?? 0;
+
+    const paragraphCenterY = options.paragraphCenterY ?? y / PAGE_HEIGHT * 100;
+    const effectiveWidth =
+      options.className === "paper-line paper-line--body"
+        ? getParagraphLayoutWidth({
+            baseWidth: options.width,
+            paragraphCenterY,
+            ballY: sceneState.ballY
+          })
+        : options.width;
+    const offset =
+      options.className === "paper-line paper-line--body"
+        ? getParagraphOffset({
+            paragraphCenterY,
+            ballX: sceneState.ballX,
+            ballY: sceneState.ballY
+          })
+        : 0;
+    const paragraphLines = getFragmentLines(
+      text,
+      effectiveWidth,
+      options.font,
+      options.lineHeight
+    );
+
+    for (const line of paragraphLines) {
+      if (y + options.lineHeight > PAGE_HEIGHT - PAGE_FOOTER_SPACE) {
+        pageIndex += 1;
+        if (pageIndex >= PAGE_COUNT) {
+          return;
+        }
+        y = PAGE_PADDING_TOP + 34;
+      }
+
+      lines.push({
+        pageIndex,
+        x: (options.x ?? PAGE_PADDING_X) + offset,
+        y,
+        text: line,
+        className: options.className,
+        width: effectiveWidth
+      });
+      y += options.lineHeight;
+    }
+
+    y += options.marginBottom ?? 0;
+  };
+
+  for (let index = 0; index < PAGE_COUNT; index += 1) {
+    lines.push({
+      pageIndex: index,
+      x: PAGE_PADDING_X,
+      y: 16,
+      text: index % 2 === 0 ? paper.title : `${paper.authors[0]} et al.`,
+      className:
+        index % 2 === 0
+          ? "paper-line paper-line--running-header"
+          : "paper-line paper-line--running-header-meta"
+    });
+  }
+
+  addLines(paper.title, {
+    className: "paper-line paper-line--title",
+    width: 620,
+    lineHeight: 40,
+    font: TITLE_FONT,
+    marginBottom: 20
+  });
+
+  addLines(`${paper.authors.join(", ")}.`, {
+    className: "paper-line paper-line--authors",
+    width: 680,
+    lineHeight: 18,
+    font: AUTHORS_FONT,
+    marginBottom: 12
+  });
+
+  addLines(
+    "Department of Computer Science, University of Toronto / Neural Networks Research Group",
+    {
+      className: "paper-line paper-line--footnote",
+      width: 700,
+      lineHeight: 15,
+      font: AUTHORS_FONT,
+      marginBottom: 28
+    }
+  );
+
+  addLines("Abstract", {
+    className: "paper-line paper-line--section",
+    width: 160,
+    lineHeight: 22,
+    font: SECTION_FONT,
+    marginBottom: 8
+  });
+
+  addLines(paper.abstract, {
+    className: "paper-line paper-line--body",
+    width: BODY_WIDTH,
+    lineHeight: BODY_LINE_HEIGHT,
+    font: BODY_FONT,
+    marginBottom: 24,
+    paragraphCenterY: 22
+  });
+
+  const sections = [
+    {
+      title: "1 Introduction",
+      paragraphs: [
+        paper.excerpts[0],
+        `${paper.excerpts[1]} ${paper.excerpts[2]}`
+      ]
+    },
+    {
+      title: "2 Architecture",
+      paragraphs: [
+        paper.excerpts[1],
+        `${paper.excerpts[0]} ${paper.excerpts[3]}`
+      ]
+    },
+    {
+      title: "3 Optimization",
+      paragraphs: [
+        paper.excerpts[2],
+        `${paper.excerpts[3]} ${paper.sourceNote}`
+      ]
+    },
+    {
+      title: "References",
+      paragraphs: [
+        `${paper.authors[0]}, ${paper.authors[1]}, ${paper.authors[2]}. ${paper.title}. Advances in Neural Information Processing Systems, 2012.`,
+        `Keywords: ${paper.keywords.join(", ")}.`
+      ]
+    }
+  ];
+
+  sections.forEach((section, sectionIndex) => {
+    addLines(section.title, {
+      className: "paper-line paper-line--section",
+      width: 280,
+      lineHeight: 22,
+      font: SECTION_FONT,
+      marginTop: 10,
+      marginBottom: 8
+    });
+
+    section.paragraphs.forEach((paragraph, paragraphIndex) => {
+      addLines(paragraph, {
+        className:
+          sectionIndex === sections.length - 1
+            ? "paper-line paper-line--reference"
+            : "paper-line paper-line--body",
+        width: BODY_WIDTH,
+        lineHeight: sectionIndex === sections.length - 1 ? 16 : BODY_LINE_HEIGHT,
+        font: sectionIndex === sections.length - 1 ? REFERENCE_FONT : BODY_FONT,
+        marginBottom: 14,
+        paragraphCenterY: 34 + (sectionIndex * 18 + paragraphIndex * 10)
+      });
+    });
+  });
+
+  return lines;
+}
+
 export function Scene({ paper }: SceneProps) {
   const [viewportWidth, setViewportWidth] = useState(getViewportWidth);
-  const viewport = getViewportKind(viewportWidth);
-  const [sceneState, setSceneState] = useState(() => getInitialSceneState(viewport));
+  const [sceneState, setSceneState] = useState(() => getInitialSceneState("desktop"));
+  const [score, setScore] = useState({ left: 0, right: 0 });
+  const [rightPaddleMode, setRightPaddleMode] = useState<"ai" | "user">("ai");
+  const [pointerY, setPointerY] = useState(50);
 
   useEffect(() => {
-    const onResize = () => {
-      setViewportWidth(getViewportWidth());
-    };
-
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  useEffect(() => {
+    const onResize = () => setViewportWidth(getViewportWidth());
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setRightPaddleMode("ai");
+        return;
+      }
+
       if (event.code === "Space") {
         event.preventDefault();
         setSceneState((current) => toggleMode(current));
       }
     };
 
+    window.addEventListener("resize", onResize);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
-      setSceneState((current) => stepPong(current));
+      setSceneState((current) => {
+        const targetPlayerY =
+          rightPaddleMode === "user"
+            ? pointerY
+            : clamp(current.playerPaddleY + Math.sign(current.ballY - current.playerPaddleY) * 1.1, 14, 86);
+        const withTarget = {
+          ...current,
+          playerPaddleY: targetPlayerY
+        };
+
+        if (withTarget.ballX <= 1.5) {
+          setScore((scoreState) => ({ ...scoreState, right: scoreState.right + 1 }));
+        } else if (withTarget.ballX >= 98.5) {
+          setScore((scoreState) => ({ ...scoreState, left: scoreState.left + 1 }));
+        }
+
+        return stepPong(withTarget);
+      });
     }, 16);
 
     return () => window.clearInterval(intervalId);
-  }, []);
+  }, [pointerY, rightPaddleMode]);
 
-  useEffect(() => {
-    setSceneState((current) => {
-      const nextViewport = getViewportKind(viewportWidth);
-      const fallback = getInitialSceneState(nextViewport);
-      return {
-        ...current,
-        visibleFragmentCount: Math.max(
-          current.visibleFragmentCount,
-          fallback.visibleFragmentCount
-        )
-      };
-    });
-  }, [viewportWidth]);
-
-  const activeFragments = getInitialVisibleFragments(paper, viewport).slice(
-    0,
-    sceneState.visibleFragmentCount
+  const lines = useMemo(
+    () => buildDocumentLines(paper, sceneState, viewportWidth),
+    [paper, sceneState, viewportWidth]
   );
-  const keywords = getVisibleKeywords(paper, viewport);
-  const showMarginNotes = sceneState.mode === "read" && hasMarginNotes(viewportWidth);
-  const paragraphBaseWidth = viewportWidth >= 1100 ? 560 : viewportWidth >= 768 ? 500 : 320;
-  const paragraphCenters = activeFragments.map((_, index) => 28 + index * 14);
 
-  const handleSceneClick: React.MouseEventHandler<HTMLElement> = (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const normalizedY = rect.height === 0 ? 0.5 : (event.clientY - rect.top) / rect.height;
+  const bricks = useMemo(
+    () =>
+      paper.keywords.map((keyword, index) => ({
+        text: keyword,
+        pageIndex: Math.min(3, Math.floor(index / 2)),
+        x: 540 + (index % 2) * 118,
+        y: 178 + index * 54,
+        strength: index % 3 === 0 ? 2 : 1
+      })),
+    [paper.keywords]
+  );
 
-    setSceneState((current) =>
-      movePlayerPaddleByClick(applyClickRally(current, viewport), normalizedY)
-    );
+  const handlePointerDown: React.PointerEventHandler<HTMLElement> = (event) => {
+    setRightPaddleMode("user");
+    setPointerY((event.clientY / window.innerHeight) * 100);
+    setSceneState((current) => applyClickRally(current, "desktop"));
   };
 
+  const handlePointerMove: React.PointerEventHandler<HTMLElement> = (event) => {
+    if (rightPaddleMode === "user") {
+      setPointerY((event.clientY / window.innerHeight) * 100);
+    }
+  };
+
+  const scoreLabel = `${String(score.left).padStart(2, "0")} : ${String(score.right).padStart(2, "0")}`;
+
   return (
-    <main
-      className={`scene mode-${sceneState.mode}`}
-      onClick={handleSceneClick}
-    >
-      <PaperFrame>
-        <header className="masthead">
-          <p className="eyebrow">playtext2</p>
-          <h1>{paper.title}</h1>
-          <p className="byline">
-            {paper.authors.join(", ")} / {paper.year}
-          </p>
-          <p className="mode-label">Local pong influence / {sceneState.mode}</p>
-        </header>
+    <div className="paper-pong-root" onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}>
+      <div className="desk-noise" aria-hidden="true" />
 
-        <section className="paper-layout">
-          <article className="paper-article">
-            <section className="article-section article-section-lead">
-              <p className="abstract-label">Abstract</p>
-              <p className="lead-paragraph">{paper.abstract}</p>
-            </section>
+      <div className="hud">
+        <div className="scoreboard">
+          <span className="scoreboard-label">Paper Pong</span>
+          <span className="scoreboard-score">{scoreLabel}</span>
+        </div>
+        <p className="scoreboard-note">
+          Click to control the right paddle. Press Esc to return it to AI.
+        </p>
+        <div aria-label="left paddle" className="paddle" style={{ transform: `translate3d(28px, calc(${sceneState.aiPaddleY}vh - 59px), 0)` }} />
+        <div aria-label="right paddle" className="paddle" style={{ transform: `translate3d(calc(100vw - 40px), calc(${sceneState.playerPaddleY}vh - 59px), 0)` }} />
+        <div aria-label="bottom paddle" className="paddle paddle--bottom" style={{ display: "none" }} />
+        <div aria-label="pong ball" className="ball" style={{ transform: `translate3d(calc(${sceneState.ballX}vw - 13px), calc(${sceneState.ballY}vh - 13px), 0)` }} />
+      </div>
 
-            <section className="article-section article-section-body">
-              {activeFragments.map((fragment, index) => {
-                const paragraphCenterY = paragraphCenters[index] ?? 50;
-                const motionDampener = sceneState.mode === "play" ? 1 : 0.35;
-                const width = getParagraphLayoutWidth({
-                  baseWidth: paragraphBaseWidth,
-                  paragraphCenterY,
-                  ballY: sceneState.ballY
-                });
-                const offset = getParagraphOffset({
-                  paragraphCenterY,
-                  ballX: sceneState.ballX,
-                  ballY: sceneState.ballY
-                }) * motionDampener;
-
-                return (
-                  <TextFragment
-                    key={fragment.id}
-                    active={sceneState.mode === "play"}
-                    text={fragment.text}
-                    width={width}
+      <main className="document-stack">
+        {Array.from({ length: PAGE_COUNT }, (_, pageIndex) => (
+          <article
+            key={pageIndex}
+            aria-label={`paper sheet ${pageIndex + 1}`}
+            className="paper-sheet"
+          >
+            <div className="paper-stage">
+              {lines
+                .filter((line) => line.pageIndex === pageIndex)
+                .map((line, index) => (
+                  <div
+                    key={`${pageIndex}-${index}-${line.y}`}
+                    className={line.className}
                     style={{
-                      maxWidth: `${width}px`,
-                      transform: `translateX(${offset}px)`
+                      left: `${line.x}px`,
+                      top: `${line.y}px`,
+                      width: line.width ? `${Math.ceil(line.width)}px` : undefined
                     }}
-                  />
-                );
-              })}
-            </section>
-          </article>
-
-          <div className="pong-overlay" aria-hidden="true">
-            <div
-              aria-label="ai paddle"
-              className="pong-paddle pong-paddle-ai"
-              style={{ top: `${sceneState.aiPaddleY}%` }}
-            />
-            <div
-              aria-label="player paddle"
-              className="pong-paddle pong-paddle-player"
-              style={{ top: `${sceneState.playerPaddleY}%` }}
-            />
-            <div
-              aria-label="pong ball"
-              className="pong-ball"
-              style={{
-                left: `${sceneState.ballX}%`,
-                top: `${sceneState.ballY}%`
-              }}
-            />
-          </div>
-          <aside className="paper-notes">
-            <p className="abstract-label">Notes</p>
-            {showMarginNotes ? <Marginalia items={keywords} /> : null}
-            {!showMarginNotes ? (
-              <div className="keyword-row">
-                {keywords.map((item) => (
-                  <span key={item} className="keyword-chip">
-                    {item}
-                  </span>
+                  >
+                    {line.text}
+                  </div>
                 ))}
-              </div>
-            ) : null}
-          </aside>
-        </section>
-
-        <footer className="scene-footer">
-          <p>Click upper or lower areas to step the right paddle. The ball locally compresses nearby paragraphs.</p>
-          <a href={paper.sourceUrl} target="_blank" rel="noreferrer">
-            Source paper
-          </a>
-        </footer>
-      </PaperFrame>
-    </main>
+              {bricks
+                .filter((brick) => brick.pageIndex === pageIndex)
+                .map((brick, index) => (
+                  <div
+                    key={`${brick.text}-${index}`}
+                    className="text-brick"
+                    data-strength={brick.strength}
+                    data-remaining={brick.strength}
+                    style={{
+                      left: `${brick.x}px`,
+                      top: `${brick.y}px`
+                    }}
+                  >
+                    {brick.text}
+                  </div>
+                ))}
+            </div>
+            <div className="page-number">{pageIndex + 1}</div>
+          </article>
+        ))}
+      </main>
+    </div>
   );
 }

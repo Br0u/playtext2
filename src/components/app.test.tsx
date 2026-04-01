@@ -6,21 +6,28 @@ describe("App", () => {
   it("renders the source paper title", () => {
     render(<App />);
     expect(
-      screen.getByText("ImageNet Classification with Deep Convolutional Neural Networks")
+      screen.getAllByText("ImageNet Classification with Deep Convolutional Neural Networks").length
+    ).toBeGreaterThan(0);
+  });
+
+  it("renders the fixed hud and pong pieces", () => {
+    render(<App />);
+    expect(screen.getByText("Paper Pong")).toBeInTheDocument();
+    expect(screen.getByText("00 : 00")).toBeInTheDocument();
+    expect(
+      screen.getByText("Click to control the right paddle. Press Esc to return it to AI.")
     ).toBeInTheDocument();
+    expect(screen.getByLabelText("left paddle")).toBeInTheDocument();
+    expect(screen.getByLabelText("right paddle")).toBeInTheDocument();
+    expect(screen.getByLabelText("bottom paddle")).toBeInTheDocument();
+    expect(screen.getByLabelText("pong ball")).toBeInTheDocument();
   });
 
-  it("renders an obvious ball and both paddles", () => {
+  it("renders a stack of four paper sheets", () => {
     render(<App />);
-    expect(screen.getAllByLabelText("pong ball").length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText("ai paddle").length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText("player paddle").length).toBeGreaterThan(0);
-  });
-
-  it("keeps the page anchored as a clean paper-reading layout", () => {
-    render(<App />);
-    expect(screen.getByText("Abstract")).toBeInTheDocument();
-    expect(screen.getByText("Source paper")).toBeInTheDocument();
-    expect(screen.getByText("Alex Krizhevsky, Ilya Sutskever, Geoffrey E. Hinton / 2012")).toBeInTheDocument();
+    expect(screen.getByLabelText("paper sheet 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("paper sheet 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("paper sheet 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("paper sheet 4")).toBeInTheDocument();
   });
 });
