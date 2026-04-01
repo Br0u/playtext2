@@ -16,4 +16,11 @@ describe("App", () => {
     expect(screen.getAllByLabelText("ai paddle").length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText("player paddle").length).toBeGreaterThan(0);
   });
+
+  it("keeps the page anchored as a clean paper-reading layout", () => {
+    render(<App />);
+    expect(screen.getByText("Abstract")).toBeInTheDocument();
+    expect(screen.getByText("Source paper")).toBeInTheDocument();
+    expect(screen.getByText("Alex Krizhevsky, Ilya Sutskever, Geoffrey E. Hinton / 2012")).toBeInTheDocument();
+  });
 });
