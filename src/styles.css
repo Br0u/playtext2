@@ -109,16 +109,70 @@ a {
 
 .arena {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 1fr);
   gap: 24px;
   padding-top: 26px;
 }
 
-.abstract-block {
-  max-width: 50rem;
+.pong-stage {
+  position: relative;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.36), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.28)),
+    linear-gradient(180deg, rgba(255, 251, 243, 0.92), rgba(235, 221, 195, 0.88));
 }
 
-.abstract-block p {
+.pong-divider {
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 50%;
+  width: 1px;
+  border-left: 1px dashed rgba(74, 46, 26, 0.28);
+}
+
+.pong-paddle,
+.pong-ball {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.pong-paddle {
+  width: 12px;
+  height: 104px;
+  background: #281a12;
+  box-shadow: 0 8px 18px rgba(26, 17, 11, 0.18);
+}
+
+.pong-paddle-ai {
+  left: 6%;
+}
+
+.pong-paddle-player {
+  left: 94%;
+}
+
+.pong-ball {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #201510;
+  box-shadow: 0 0 0 6px rgba(255, 251, 243, 0.8), 0 8px 18px rgba(41, 25, 15, 0.22);
+}
+
+.pong-copy {
+  position: absolute;
+  left: 13%;
+  right: 13%;
+  bottom: 28px;
+  padding: 16px 18px;
+  background: rgba(255, 248, 237, 0.72);
+  border: 1px solid rgba(75, 49, 33, 0.16);
+  }
+
+.pong-copy p {
   margin: 0;
   line-height: 1.65;
 }
@@ -218,6 +272,16 @@ a {
 
   .masthead h1 {
     max-width: none;
+  }
+
+  .pong-stage {
+    min-height: 360px;
+  }
+
+  .pong-copy {
+    left: 16%;
+    right: 16%;
+    bottom: 18px;
   }
 
   .mode-play .fragment-field,

@@ -1,2 +1,2 @@
-export { attentionIsAllYouNeed as paper } from "./papers/attention-is-all-you-need";
+export { alexNetPaper as paper } from "./papers/alexnet";
 export type { PaperContent, PaperFragment } from "./schema";

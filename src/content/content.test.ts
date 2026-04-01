@@ -3,8 +3,10 @@ import { paper } from "./index";
 
 describe("paper dataset", () => {
   it("uses the required source paper", () => {
-    expect(paper.title).toBe("Attention Is All You Need");
-    expect(paper.sourceUrl).toContain("1706.03762");
+    expect(paper.title).toBe(
+      "ImageNet Classification with Deep Convolutional Neural Networks"
+    );
+    expect(paper.sourceUrl).toContain("papers.nips.cc");
   });
 
   it("provides the minimum interactive content inventory", () => {

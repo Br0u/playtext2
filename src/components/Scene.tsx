@@ -5,9 +5,14 @@ import {
   getInitialVisibleFragments,
   getVisibleKeywords,
   getViewportKind,
-  type ViewportKind
 } from "../scene/fragments";
-import { applyClickRally, getInitialSceneState, toggleMode } from "../scene/state";
+import {
+  applyClickRally,
+  getInitialSceneState,
+  movePlayerPaddleByClick,
+  stepPong,
+  toggleMode
+} from "../scene/state";
 import { Marginalia } from "./Marginalia";
 import { PaperFrame } from "./PaperFrame";
 import { TextFragment } from "./TextFragment";
@@ -24,7 +29,6 @@ export function Scene({ paper }: SceneProps) {
   const [viewportWidth, setViewportWidth] = useState(getViewportWidth);
   const viewport = getViewportKind(viewportWidth);
   const [sceneState, setSceneState] = useState(() => getInitialSceneState(viewport));
-  const [pointerOffset, setPointerOffset] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     const onResize = () => {
@@ -48,6 +52,14 @@ export function Scene({ paper }: SceneProps) {
   }, []);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setSceneState((current) => stepPong(current));
+    }, 16);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
     setSceneState((current) => {
       const nextViewport = getViewportKind(viewportWidth);
       const fallback = getInitialSceneState(nextViewport);
@@ -68,50 +80,63 @@ export function Scene({ paper }: SceneProps) {
   const keywords = getVisibleKeywords(paper, viewport);
   const showMarginNotes = sceneState.mode === "read" && hasMarginNotes(viewportWidth);
 
-  const handleRally = () => {
-    setSceneState((current) => applyClickRally(current, viewport));
-  };
-
-  const handlePointerMove: React.PointerEventHandler<HTMLElement> = (event) => {
+  const handleSceneClick: React.MouseEventHandler<HTMLElement> = (event) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width - 0.5) * 16;
-    const y = ((event.clientY - rect.top) / rect.height - 0.5) * 16;
-    setPointerOffset({ x, y });
-  };
+    const normalizedY = rect.height === 0 ? 0.5 : (event.clientY - rect.top) / rect.height;
 
-  const handlePointerLeave = () => {
-    setPointerOffset({ x: 0, y: 0 });
+    setSceneState((current) =>
+      movePlayerPaddleByClick(applyClickRally(current, viewport), normalizedY)
+    );
   };
 
   return (
     <main
       className={`scene mode-${sceneState.mode}`}
-      onClick={handleRally}
-      onPointerLeave={handlePointerLeave}
-      onPointerMove={handlePointerMove}
+      onClick={handleSceneClick}
     >
       <PaperFrame>
         <header className="masthead">
-          <p className="eyebrow">playtext2 / playable paper scene</p>
+          <p className="eyebrow">playtext2 / paper pong reading room</p>
           <h1>{paper.title}</h1>
           <p className="byline">
-            {paper.authors.slice(0, 3).join(", ")} et al. / {paper.year}
+            {paper.authors.join(", ")} / {paper.year}
           </p>
           <p className="mode-label">Mode: {sceneState.mode}</p>
         </header>
 
         <section className="arena">
-          <div className="abstract-block">
-            <p className="abstract-label">Abstract</p>
-            <p>{paper.abstract}</p>
+          <div className="pong-stage">
+            <div className="pong-divider" aria-hidden="true" />
+            <div
+              aria-label="ai paddle"
+              className="pong-paddle pong-paddle-ai"
+              style={{ top: `${sceneState.aiPaddleY}%` }}
+            />
+            <div
+              aria-label="player paddle"
+              className="pong-paddle pong-paddle-player"
+              style={{ top: `${sceneState.playerPaddleY}%` }}
+            />
+            <div
+              aria-label="pong ball"
+              className="pong-ball"
+              style={{
+                left: `${sceneState.ballX}%`,
+                top: `${sceneState.ballY}%`
+              }}
+            />
+
+            <div className="pong-copy">
+              <p className="abstract-label">Abstract</p>
+              <p>{paper.abstract}</p>
+            </div>
           </div>
 
           <div className={`fragment-field viewport-${viewport}`}>
             {activeFragments.map((fragment, index) => {
-              const motionScale = sceneState.mode === "play" ? 1 : 0.35;
-              const x = pointerOffset.x * motionScale * (index + 1) * 0.6;
-              const y = pointerOffset.y * motionScale * (index + 1) * 0.45;
-              const rotate = sceneState.mode === "play" ? (index % 2 === 0 ? -1.5 : 1.5) : 0;
+              const ballInfluenceX = ((sceneState.ballX - 50) / 50) * (index + 1) * 4;
+              const ballInfluenceY = ((sceneState.ballY - 50) / 50) * (index + 1) * 3;
+              const rotate = sceneState.mode === "play" ? (index % 2 === 0 ? -2 : 2) : 0;
 
               return (
                 <TextFragment
@@ -119,7 +144,7 @@ export function Scene({ paper }: SceneProps) {
                   active={sceneState.mode === "play"}
                   text={fragment.text}
                   style={{
-                    transform: `translate(${x}px, ${y}px) rotate(${rotate}deg)`
+                    transform: `translate(${ballInfluenceX}px, ${ballInfluenceY}px) rotate(${rotate}deg)`
                   }}
                 />
               );
@@ -140,7 +165,7 @@ export function Scene({ paper }: SceneProps) {
         </section>
 
         <footer className="scene-footer">
-          <p>Click to rally fragments. Press Space to settle or release the page.</p>
+          <p>Click upper or lower zones to step the right paddle. Press Space to settle or release the page.</p>
           <a href={paper.sourceUrl} target="_blank" rel="noreferrer">
             Source paper
           </a>
