@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getReadColumnCount, hasMarginNotes } from "./columns";
-import { getParagraphLayoutWidth, getParagraphOffset } from "./pretext";
+import {
+  carveTextLineSlots,
+  circleIntervalForBand,
+  getParagraphLayoutWidth,
+  getParagraphOffset,
+  rectIntervalForBand
+} from "./pretext";
 
 describe("layout rules", () => {
   it("uses one column on mobile", () => {
@@ -44,5 +50,38 @@ describe("layout rules", () => {
         ballY: 50
       })
     ).toBeLessThan(0);
+  });
+
+  it("carves blocked intervals into usable slots", () => {
+    expect(
+      carveTextLineSlots(
+        { left: 0, right: 240 },
+        [{ left: 90, right: 150 }]
+      )
+    ).toEqual([
+      { left: 0, right: 90 },
+      { left: 150, right: 240 }
+    ]);
+  });
+
+  it("creates a circle interval when the band intersects the ball", () => {
+    const interval = circleIntervalForBand(
+      { cx: 50, cy: 50, r: 10, hPad: 4, vPad: 0 },
+      46,
+      54
+    );
+    expect(interval).not.toBeNull();
+    expect(interval!.left).toBeLessThan(50);
+    expect(interval!.right).toBeGreaterThan(50);
+  });
+
+  it("creates a rect interval when the band crosses a rect obstacle", () => {
+    expect(
+      rectIntervalForBand(
+        { x: 20, y: 30, w: 40, h: 20, hPad: 5, vPad: 0 },
+        35,
+        45
+      )
+    ).toEqual({ left: 15, right: 65 });
   });
 });

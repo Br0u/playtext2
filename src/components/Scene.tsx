@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PaperContent } from "../content";
 import {
   getFragmentLines,
-  getParagraphLayoutWidth,
-  getParagraphOffset
+  layoutTextAroundObstacles
 } from "../layout/pretext";
 import {
   applyClickRally,
@@ -48,7 +47,48 @@ function getViewportWidth() {
   return typeof window === "undefined" ? 1280 : window.innerWidth;
 }
 
-function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewportWidth: number) {
+function getViewportHeight() {
+  return typeof window === "undefined" ? 900 : window.innerHeight;
+}
+
+function getPageObstacles(sceneState: SceneState, pageWidth: number, pageHeight: number) {
+  return {
+    circles: [
+      {
+        cx: pageWidth * (sceneState.ballX / 100),
+        cy: pageHeight * (sceneState.ballY / 100),
+        r: 20,
+        hPad: 18,
+        vPad: 4
+      }
+    ],
+    rects: [
+      {
+        x: 0,
+        y: pageHeight * (sceneState.aiPaddleY / 100) - 59,
+        w: 20,
+        h: 118,
+        hPad: 10,
+        vPad: 2
+      },
+      {
+        x: pageWidth - 20,
+        y: pageHeight * (sceneState.playerPaddleY / 100) - 59,
+        w: 20,
+        h: 118,
+        hPad: 10,
+        vPad: 2
+      }
+    ]
+  };
+}
+
+function buildDocumentLines(
+  paper: PaperContent,
+  sceneState: SceneState,
+  viewportWidth: number,
+  viewportHeight: number
+) {
   const lines: PaperLine[] = [];
   let pageIndex = 0;
   let y = PAGE_PADDING_TOP;
@@ -63,31 +103,12 @@ function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewpor
       x?: number;
       marginTop?: number;
       marginBottom?: number;
-      paragraphCenterY?: number;
     }
   ) => {
     y += options.marginTop ?? 0;
-
-    const paragraphCenterY = options.paragraphCenterY ?? y / PAGE_HEIGHT * 100;
-    const effectiveWidth =
-      options.className === "paper-line paper-line--body"
-        ? getParagraphLayoutWidth({
-            baseWidth: options.width,
-            paragraphCenterY,
-            ballY: sceneState.ballY
-          })
-        : options.width;
-    const offset =
-      options.className === "paper-line paper-line--body"
-        ? getParagraphOffset({
-            paragraphCenterY,
-            ballX: sceneState.ballX,
-            ballY: sceneState.ballY
-          })
-        : 0;
     const paragraphLines = getFragmentLines(
       text,
-      effectiveWidth,
+      options.width,
       options.font,
       options.lineHeight
     );
@@ -103,11 +124,11 @@ function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewpor
 
       lines.push({
         pageIndex,
-        x: (options.x ?? PAGE_PADDING_X) + offset,
+        x: options.x ?? PAGE_PADDING_X,
         y,
         text: line,
         className: options.className,
-        width: effectiveWidth
+        width: options.width
       });
       y += options.lineHeight;
     }
@@ -163,14 +184,62 @@ function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewpor
     marginBottom: 8
   });
 
-  addLines(paper.abstract, {
-    className: "paper-line paper-line--body",
-    width: BODY_WIDTH,
-    lineHeight: BODY_LINE_HEIGHT,
-    font: BODY_FONT,
-    marginBottom: 24,
-    paragraphCenterY: 22
-  });
+  const addObstacleAwareParagraph = (
+    text: string,
+    className: string,
+    lineHeight: number,
+    font: string,
+    marginBottom = 14
+  ) => {
+    const pageObstacles = getPageObstacles(
+      {
+        ...sceneState,
+        ballY: (sceneState.ballY / 100) * viewportHeight / PAGE_HEIGHT * 100,
+        aiPaddleY: (sceneState.aiPaddleY / 100) * viewportHeight / PAGE_HEIGHT * 100,
+        playerPaddleY: (sceneState.playerPaddleY / 100) * viewportHeight / PAGE_HEIGHT * 100
+      },
+      PAGE_WIDTH,
+      PAGE_HEIGHT
+    );
+    const result = layoutTextAroundObstacles({
+      text,
+      font,
+      lineHeight,
+      startY: y,
+      bottomY: PAGE_HEIGHT - PAGE_FOOTER_SPACE,
+      regionLeft: PAGE_PADDING_X,
+      regionRight: PAGE_PADDING_X + BODY_WIDTH,
+      circles: pageObstacles.circles,
+      rects: pageObstacles.rects
+    });
+
+    for (const line of result.lines) {
+      if (line.y + lineHeight > PAGE_HEIGHT - PAGE_FOOTER_SPACE) {
+        pageIndex += 1;
+        if (pageIndex >= PAGE_COUNT) {
+          return;
+        }
+      }
+
+      lines.push({
+        pageIndex,
+        x: Math.round(line.x),
+        y: Math.round(line.y),
+        text: line.text,
+        className,
+        width: line.width
+      });
+    }
+    y = result.endY + marginBottom;
+  };
+
+  addObstacleAwareParagraph(
+    paper.abstract,
+    "paper-line paper-line--body",
+    BODY_LINE_HEIGHT,
+    BODY_FONT,
+    24
+  );
 
   const sections = [
     {
@@ -214,17 +283,15 @@ function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewpor
     });
 
     section.paragraphs.forEach((paragraph, paragraphIndex) => {
-      addLines(paragraph, {
-        className:
-          sectionIndex === sections.length - 1
-            ? "paper-line paper-line--reference"
-            : "paper-line paper-line--body",
-        width: BODY_WIDTH,
-        lineHeight: sectionIndex === sections.length - 1 ? 16 : BODY_LINE_HEIGHT,
-        font: sectionIndex === sections.length - 1 ? REFERENCE_FONT : BODY_FONT,
-        marginBottom: 14,
-        paragraphCenterY: 34 + (sectionIndex * 18 + paragraphIndex * 10)
-      });
+      addObstacleAwareParagraph(
+        paragraph,
+        sectionIndex === sections.length - 1
+          ? "paper-line paper-line--reference"
+          : "paper-line paper-line--body",
+        sectionIndex === sections.length - 1 ? 16 : BODY_LINE_HEIGHT,
+        sectionIndex === sections.length - 1 ? REFERENCE_FONT : BODY_FONT,
+        paragraphIndex === section.paragraphs.length - 1 ? 14 : 10
+      );
     });
   });
 
@@ -233,13 +300,17 @@ function buildDocumentLines(paper: PaperContent, sceneState: SceneState, viewpor
 
 export function Scene({ paper }: SceneProps) {
   const [viewportWidth, setViewportWidth] = useState(getViewportWidth);
+  const [viewportHeight, setViewportHeight] = useState(getViewportHeight);
   const [sceneState, setSceneState] = useState(() => getInitialSceneState("desktop"));
   const [score, setScore] = useState({ left: 0, right: 0 });
   const [rightPaddleMode, setRightPaddleMode] = useState<"ai" | "user">("ai");
   const [pointerY, setPointerY] = useState(50);
 
   useEffect(() => {
-    const onResize = () => setViewportWidth(getViewportWidth());
+    const onResize = () => {
+      setViewportWidth(getViewportWidth());
+      setViewportHeight(getViewportHeight());
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setRightPaddleMode("ai");
@@ -287,8 +358,8 @@ export function Scene({ paper }: SceneProps) {
   }, [pointerY, rightPaddleMode]);
 
   const lines = useMemo(
-    () => buildDocumentLines(paper, sceneState, viewportWidth),
-    [paper, sceneState, viewportWidth]
+    () => buildDocumentLines(paper, sceneState, viewportWidth, viewportHeight),
+    [paper, sceneState, viewportWidth, viewportHeight]
   );
 
   const bricks = useMemo(
